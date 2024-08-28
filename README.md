@@ -2,6 +2,8 @@
 
 **POLLISAVER** is a Python-based image viewer application that retrieves and displays images based on prompts using the Pollinations AI service. 
 
+![POLLISAVER_v1](https://github.com/user-attachments/assets/5b9c77a0-3923-4a84-95ad-092d7625a722)
+
 ## Features:
 - Prompt-based image retrieval.
 - Automatic interval-based image updates.
