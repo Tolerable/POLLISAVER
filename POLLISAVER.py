@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, simpledialog
 import requests
 from PIL import Image, ImageTk
 import io
@@ -41,6 +41,7 @@ class PollinationsViewer:
         self.always_on_top = tk.BooleanVar()
         self.enhance = tk.BooleanVar()
         self.enhance.trace_add('write', self.save_settings)  # Save settings whenever "enhance" changes
+        self.interval = 60  # Default to 1 minute
         self.load_settings()
 
         self.prompt_history = deque(maxlen=20)
@@ -70,6 +71,7 @@ class PollinationsViewer:
         options_menu = tk.Menu(menubar, tearoff=0)
         options_menu.add_checkbutton(label="Always on Top", onvalue=True, offvalue=False,
                                      variable=self.always_on_top, command=self.toggle_always_on_top)
+        options_menu.add_command(label="Set Interval (min)", command=self.set_interval)  # Moved interval setting here
         menubar.add_cascade(label="Options", menu=options_menu)
         self.master.config(menu=menubar)
 
@@ -91,15 +93,9 @@ class PollinationsViewer:
         self.history_dropdown.grid(column=1, row=1, columnspan=6, sticky=(tk.W, tk.E), padx=(0, 5))
         self.history_dropdown.bind('<<ComboboxSelected>>', self.on_history_select)
 
-        interval_label = ttk.Label(input_frame, text="Interval (min):")
-        interval_label.grid(column=0, row=2, sticky=tk.W, padx=(0, 5))
-        self.interval_entry = ttk.Entry(input_frame, width=5)
-        self.interval_entry.grid(column=1, row=2, sticky=tk.W, padx=(0, 5))
-        self.interval_entry.insert(0, "1")
-
-        # Adjusted button layout
+        # Adjusted button layout to bring buttons closer to the prompt and history entries
         button_frame = ttk.Frame(input_frame)
-        button_frame.grid(column=2, row=2, columnspan=5, sticky=tk.W)
+        button_frame.grid(column=0, row=2, columnspan=2, sticky=tk.W, padx=(5, 5))
 
         self.start_stop_button = ttk.Button(button_frame, text="Start", command=self.toggle_start_stop, width=8)
         self.start_stop_button.grid(column=0, row=0, padx=(5, 5))
@@ -111,7 +107,6 @@ class PollinationsViewer:
         self.enhance_checkbox.grid(column=2, row=0, padx=(5, 5))
 
         input_frame.columnconfigure(1, weight=1)
-        input_frame.columnconfigure(6, weight=1)
 
         self.image_frame = ttk.Frame(self.frame, relief="flat", borderwidth=0)
         self.image_frame.pack(expand=True, fill=tk.BOTH)
@@ -121,10 +116,19 @@ class PollinationsViewer:
 
         # Bind left-click to toggle fullscreen
         self.image_label.bind("<Button-1>", self.toggle_fullscreen)
+        self.image_label.bind("<Button-3>", self.show_context_menu)  # Right-click for context menu
 
         self.context_menu = tk.Menu(self.master, tearoff=0)
         self.context_menu.add_command(label="Copy to Clipboard", command=self.copy_to_clipboard)
-        self.image_label.bind("<Button-3>", self.show_context_menu)
+
+    def set_interval(self):
+        interval_str = simpledialog.askstring("Set Interval", "Enter interval in minutes:", initialvalue=str(self.interval / 60), parent=self.master)
+        try:
+            self.interval = max(0.1, float(interval_str)) * 60
+            print(f"Interval set to {self.interval} seconds.")
+            self.save_settings()
+        except ValueError:
+            messagebox.showerror("Invalid Input", "Please enter a valid number for the interval.")
 
     def toggle_start_stop(self):
         if self.is_running:
@@ -171,17 +175,11 @@ class PollinationsViewer:
 
         self.add_to_history(prompt)
 
-        try:
-            interval = max(0.1, float(self.interval_entry.get())) * 60
-        except ValueError:
-            messagebox.showerror("Invalid Input", "Please enter a valid number for the interval.")
-            return
-
         self.is_running = True
         self.start_stop_button.config(text="Stop")
         self.current_request_id = random.randint(1, 1000000)  # Generate a unique request ID
         
-        self.viewer_thread = threading.Thread(target=self.run_viewer, args=(prompt, interval, self.current_request_id))
+        self.viewer_thread = threading.Thread(target=self.run_viewer, args=(prompt, self.interval, self.current_request_id))
         self.viewer_thread.start()
 
     def stop_viewer(self):
@@ -210,6 +208,8 @@ class PollinationsViewer:
         self.display_fullscreen_image()
 
         self.fullscreen_window.bind('<Escape>', self.exit_fullscreen)
+        self.fullscreen_window.bind("<Button-1>", self.exit_fullscreen)  # Left-click to exit fullscreen
+        self.fullscreen_window.bind("<Button-3>", self.show_context_menu)  # Right-click for context menu
 
     def exit_fullscreen(self, event=None):
         if self.fullscreen_window:
@@ -364,6 +364,7 @@ class PollinationsViewer:
         settings = {
             "always_on_top": self.always_on_top.get(),
             "enhance": self.enhance.get(),  # Save the state of the "Enhance" checkbox
+            "interval": self.interval  # Save the interval setting
         }
         with open('settings.json', 'w') as f:
             json.dump(settings, f)
@@ -374,6 +375,7 @@ class PollinationsViewer:
                 settings = json.load(f)
                 self.always_on_top.set(settings.get("always_on_top", False))
                 self.enhance.set(settings.get("enhance", False))  # Load the state of the "Enhance" checkbox
+                self.interval = settings.get("interval", 60)  # Load the interval setting (default to 1 minute)
 
     def on_closing(self):
         self.stop_viewer()  # Ensure the viewer thread stops
